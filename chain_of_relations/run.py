@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent
 
 from chain_of_relations.schema import Entity
 from chain_of_relations.kg_backend import get_backend
@@ -37,7 +38,7 @@ def str2bool(v):
 
 def prepare_dataset(dataset_name: str) -> Tuple[List[Dict[str, Any]], Dict[str, str], str]:
 	if dataset_name == "cwq":
-		dataset_path = str(CURRENT_DIR / ".." / ".." / "datasets" / "cwq" / "cwq.json")
+		dataset_path = str(PROJECT_ROOT / "datasets" / "cwq" / "cwq.json")
 		indicator = {
 			"question_id": "id",
 			"question": "question",
@@ -45,7 +46,7 @@ def prepare_dataset(dataset_name: str) -> Tuple[List[Dict[str, Any]], Dict[str, 
 			"topic_entity": "topic_entity",
 		}
 	elif dataset_name == "webqsp":
-		dataset_path = str(CURRENT_DIR / ".." / ".." / "datasets" / "webqsp" / "webqsp.json")
+		dataset_path = str(PROJECT_ROOT / "datasets" / "webqsp" / "webqsp.json")
 		indicator = {
 			"question_id": "id",
 			"question": "question",
@@ -53,7 +54,7 @@ def prepare_dataset(dataset_name: str) -> Tuple[List[Dict[str, Any]], Dict[str, 
 			"topic_entity": "topic_entity",
 		}
 	elif dataset_name == "qald10_en":
-		dataset_path = str(CURRENT_DIR / ".." / ".." / "datasets" / "qald10_en" / "qald10_en.json")
+		dataset_path = str(PROJECT_ROOT / "datasets" / "qald10_en" / "qald10_en.json")
 		indicator = {
 			"question_id": "id",
 			"question": "question",
@@ -411,8 +412,7 @@ def main() -> None:
 		raise SystemExit(1)
 
 	model_dirname = model_name_to_dirname(model_name, openai_base_url)
-	project_root = CURRENT_DIR.parent.parent
-	output_dir = str(project_root / "results" / args.method / args.dataset / model_dirname)
+	output_dir = str(PROJECT_ROOT / "results" / args.method / args.dataset / model_dirname)
 	output_jsonl_file = str(Path(output_dir) / "predict.jsonl")
 	param_json_file, param_created = save_param_json_if_missing(
 		output_dir=output_dir,
