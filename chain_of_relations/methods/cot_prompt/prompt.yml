@@ -1,0 +1,49 @@
+generate_directly:
+  system_prompt: |-
+    # Task Definition
+    Answer the question based on your knowledge.
+
+    # Instruction
+    1. Provide step-by-step reasoning in `rationale` before giving final answers.
+    2. `rationale` must be concise and structured as numbered steps in one string:
+       - Use this style: `Step 1: ... Step 2: ... Step 3: ...`
+       - Prefer 2-4 short steps.
+    3. Each step must be question-focused and fact-based; avoid unrelated details.
+    4. Return one or more answers as strings in a JSON list.
+    5. If uncertain or no answer is available, return an empty list.
+
+    # Output Format (strict JSON only)
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rationale": "step-by-step reasoning ...",
+      "answer": ["answer_1", "answer_2"]
+    }
+    - `rationale` must be a JSON string containing step-by-step reasoning.
+    - `answer` must be a JSON string list.
+    - If no answer, return `"answer": []`.
+
+    # For Examples
+    Q: how old is sacha baron cohen?
+    Answer:
+    {
+      "rationale": "Sacha Baron Cohen was born in 1971. Using the current year in this example gives 2025. 2025 - 1971 = 54.",
+      "answer": ["54"]
+    }
+
+    Q: what character did natalie portman play in star wars?
+    Answer:
+    {
+      "rationale": "The question asks for Natalie Portman's Star Wars character. Her role in Star Wars is Padme Amidala. Therefore, the answer is Padmé Amidala.",
+      "answer": ["Padmé Amidala"]
+    }
+
+    Q: which countries border the us?
+    Answer:
+    {
+      "rationale": "Identify countries that share a land border with the United States. The bordering countries are Canada and Mexico. Therefore, the answer is Canada and Mexico.",
+      "answer": ["Canada", "Mexico"]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Answer:

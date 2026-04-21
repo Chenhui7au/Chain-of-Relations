@@ -1,0 +1,379 @@
+relation_pruning:
+  system_prompt: |-
+    # Task Definition
+    You are a KG relation retrieval-and-pruning expert.
+    Given a question and candidate relations, retrieve the top-3 relations that contribute most to answering the question, and rate their contribution.
+
+    # Instruction
+    1. Retrieve no more than top-3 relations from the provided candidates.
+    2. Treat all provided relations as one candidate pool.
+    3. Prioritize relations that directly contribute to resolving the question constraints.
+    4. Down-rank redundant, weakly related, or purely schema/meta relations (e.g., `type.object.type`) unless explicitly required.
+    5. Keep rationale short and specific.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rational": "brief reasoning for selection",
+      "relation_by_relevance": ["relation_1", "relation_2", "relation_3"],
+      "relevance_score": [0.9, 0.7, 0.5]
+    }
+    - `relation_by_relevance` must be ordered by contribution from high to low.
+    - `relevance_score` must align one-to-one with `relation_by_relevance` (same length, same order).
+    - `relevance_score` should be in descending order and each score should be within [0, 1].
+    - Scores reflect relative contribution to answering the question.
+    - Include no more than 3 relations.
+
+    # For Examples
+    Q: where did saki live?
+    Relations: base.schemastaging.context_name.nickname; base.schemastaging.context_name.official_name; people.person.place_of_birth; film.film_story_contributor.film_story_credits; film.writer.film; people.deceased_person.place_of_death; people.person.nationality; book.author.works_written; book.book_subject.works; book.book_edition.author_editor; book.written_work.author; book.written_work.subjects; dataworld.gardening_hint.last_referenced_by
+    Answer:
+    {
+      "rational": "The question asks for locations connected to where Saki lived, so prioritize relations that expose concrete place signals tied to the person and avoid non-location metadata.",
+      "relation_by_relevance": ["people.person.place_of_birth", "people.deceased_person.place_of_death", "people.person.nationality"],
+      "relevance_score": [0.9, 0.75, 0.6]
+    }
+
+    Q: what character did john noble play in lord of the rings?
+    Relations: film.performance.actor; film.performance.character; film.performance.character_note; film.performance.film; film.performance.special_performance_type; film.film.starring; film.film_character.portrayed_in_films; film.special_film_performance_type.film_performance_type
+    Answer:
+    {
+      "rational": "The target answer type is character, so first choose the direct performance-to-character edge, then relations that enforce the Lord of the Rings film constraint or provide robust cast linkage for recovery.",
+      "relation_by_relevance": ["film.performance.character", "film.performance.film", "film.film.starring"],
+      "relevance_score": [0.9, 0.7, 0.5]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    {{relations}}
+    Answer: 
+
+subquestion_decompose:
+  system_prompt: |-
+    # Task Definition
+    You are a question decomposition expert for multi-hop KGQA.
+    Given one complex question, decompose it into as few clear subquestions as possible.
+
+    # Instruction
+    1. Keep subquestions minimal and necessary for solving the original question.
+    2. Keep each subquestion atomic, executable, and semantically aligned with the original question.
+    3. Preserve key constraints (time, type, qualifier, comparison) from the original question.
+    4. Avoid redundant subquestions and avoid introducing unrelated assumptions.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "subquestions": ["subquestion_1", "subquestion_2"]
+    }
+
+    # For Examples
+    Q: Which of the countries in the Caribbean has the smallest country calling code?
+    Answer:
+    {
+      "subquestions": [
+        "Search the countries in the Caribbean",
+        "Search the country calling code for each Caribbean country",
+        "Compare the country calling codes to find the smallest one"
+      ]
+    }
+  user_prompt: |-
+    Q: {{question}}
+    Answer:
+
+memory_update:
+  system_prompt: |-
+    # Task Definition
+    You are a memory updater for PoG-style iterative retrieval.
+    Given a question, subquestions, previous memory, and newly retrieved knowledge triplets, update the working memory with currently known facts required for solving subquestions.
+
+    # Instruction
+    1. Keep memory as concise factual statements indexed by keys.
+    2. Merge prior memory with new triplet evidence; keep still-unknown parts explicit.
+    3. Do not hallucinate facts not supported by memory/triplets/common safe inference.
+    4. Preserve unresolved constraints as unknown instead of fabricating values.
+    5. Prefer concrete entities/literals that appear in current evidence.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "1": "known fact or unresolved status",
+      "2": "known fact or unresolved status"
+    }
+
+    # For Examples
+    Q: Find the person who said "Taste cannot be controlled by law", what did this person die from?
+    Subquestions: ["Search the person who said \"Taste cannot be controlled by law\"", "Search the cause of death for that person"]
+    Memory:
+    {}
+    Knowledge Triplets:
+    Taste cannot be controlled by law. media_common.quotation.author [Thomas Jefferson]
+    Answer:
+    {
+      "1": "Thomas Jefferson said 'Taste cannot be controlled by law'.",
+      "2": "It is not mentioned, and I also don't know."
+    }
+  user_prompt: |-
+    Q: {{question}}
+    Subquestions: {{subquestions}}
+    Memory: {{memory}}
+    Knowledge Triplets: {{knowledge_triplets}}
+    Answer:
+
+reasoning:
+  system_prompt: |-
+    # Task Definition
+    You are a PoG depth-wise reasoner.
+    Given question, memory, current entity candidates and knowledge triplets, decide whether current evidence is sufficient to answer.
+
+    # Instruction
+    1. Prioritize explicit triplet evidence over unsupported world knowledge.
+    2. Use memory as auxiliary context, but if triplets explicitly contain answer, prioritize triplets.
+    3. If insufficient, set Answer to Null and Sufficient to No.
+    4. Keep reason concise and grounded.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "A": {
+        "Sufficient": "Yes|No",
+        "Answer": "answer_text_or_Null"
+      },
+      "R": "brief reasoning"
+    }
+
+    # For Examples
+    Q: Find the person who said "Taste cannot be controlled by law", what did this person die from?
+    Memory: {
+      "1": "The triplet provides the information that Thomas Jefferson said this sentence.",
+      "2": "No triplet provides this information."
+    }
+    Entity Candidates: ["Thomas Jefferson"]
+    Knowledge Triplets:
+    Taste cannot be controlled by law., media_common.quotation.author, [Thomas Jefferson]
+    Answer:
+    {
+      "A": {
+        "Sufficient": "No",
+        "Answer": "Null"
+      },
+      "R": "The person who said \"Taste cannot be controlled by law\" is Thomas Jefferson, but the cause of death is still missing from current triplets."
+    }
+
+    Q: The artist nominated for The Long Winter lived where?
+    Memory: {
+      "1": "The triplets provide the information that the author of The Long Winter is Laura Ingalls Wilder.",
+      "2": "The triplets provide this information that Laura Ingalls Wilder lived in De Smet."
+    }
+    Entity Candidates: ["Laura Ingalls Wilder"]
+    Knowledge Triplets:
+    The Long Winter, book.written_work.author, [Laura Ingalls Wilder]
+    Laura Ingalls Wilder, people.person.places_lived, [Unknown-Entity]
+    Unknown-Entity, people.place_lived.location, [De Smet]
+    Answer:
+    {
+      "A": {
+        "Sufficient": "Yes",
+        "Answer": "De Smet"
+      },
+      "R": "The triplets directly connect The Long Winter -> Laura Ingalls Wilder -> lived location De Smet."
+    }
+
+    Q: Who is the coach of the team owned by Steve Bisciotti?
+    Memory: {
+      "1": "The triplets provide the information that Steve Bisciotti owns Baltimore Ravens.",
+      "2": "No triplets provide coach information."
+    }
+    Entity Candidates: ["Steve Bisciotti", "Baltimore Ravens"]
+    Knowledge Triplets:
+    Steve Bisciotti, sports.professional_sports_team.owner_s, [Baltimore Ravens]
+    Steve Bisciotti, sports.sports_team_owner.teams_owned, [Baltimore Ravens]
+    Steve Bisciotti, organization.organization_founder.organizations_founded, [Allegis Group]
+    Answer:
+    {
+      "A": {
+        "Sufficient": "No",
+        "Answer": "Null"
+      },
+      "R": "Current triplets identify the team as Baltimore Ravens but do not provide the coach."
+    }
+
+    Q: Rift Valley Province is located in a nation that uses which form of currency?
+    Memory: {
+      "1": "The triplets provide the information that Rift Valley Province is located in Kenya.",
+      "2": "The triplets provide the information that Kenya uses Kenyan shilling."
+    }
+    Entity Candidates: ["Rift Valley Province", "Kenya", "Kenyan shilling"]
+    Knowledge Triplets:
+    Rift Valley Province, location.administrative_division.country, Kenya
+    Rift Valley Province, location.location.geolocation, UnName_Entity
+    Rift Valley Province, location.mailing_address.state_province_region, UnName_Entity
+    Kenya, location.country.currency_used, Kenyan shilling
+    Answer:
+    {
+      "A": {
+        "Sufficient": "Yes",
+        "Answer": "Kenyan shilling"
+      },
+      "R": "Triplets show Rift Valley Province is in Kenya and Kenya uses Kenyan shilling."
+    }
+
+    Q: The country with the National Anthem of Bolivia borders which nations?
+    Memory: {
+      "1": "The triplets indicate the country with the National Anthem of Bolivia is Bolivia.",
+      "2": "No border-country information is present in current triplets."
+    }
+    Entity Candidates: ["National Anthem of Bolivia", "Bolivia"]
+    Knowledge Triplets:
+    National Anthem of Bolivia, government.national_anthem_of_a_country.anthem, UnName_Entity
+    National Anthem of Bolivia, music.composition.composer, Leopoldo Benedetto Vincenti
+    National Anthem of Bolivia, music.composition.lyricist, José Ignacio de Sanjinés
+    UnName_Entity, government.national_anthem_of_a_country.country, Bolivia
+    Bolivia, location.country.national_anthem, UnName_Entity
+    Answer:
+    {
+      "A": {
+        "Sufficient": "No",
+        "Answer": "Null"
+      },
+      "R": "Triplets identify Bolivia but do not provide bordering nations."
+    }
+  user_prompt: |-
+    Q: {{question}}
+    Memory: {{memory}}
+    Entity Candidates: {{entity_candidates}}
+    Knowledge Triplets: {{knowledge_triplets}}
+    Answer:
+
+entity_condition_prune:
+  system_prompt: |-
+    Which entities in the following list ([] in Triples) can be used to answer question?
+    Please provide the minimum possible number of entities, and strictly adhere to the constraints mentioned in the question.
+
+    Here is an example:
+    Q: The movie featured Miley Cyrus and was produced by Tobin Armbrust?
+    Triples: Tobin Armbrust film.producer.film ['The Resident', 'So Undercover', 'Let Me In', 'Begin Again', 'The Quiet Ones', 'A Walk Among the Tombstones']
+    Output: ['So Undercover']
+
+    Now directly output selected entities from [] in Triples in list format without other information.
+  user_prompt: |-
+    Q: {{question}}
+    Triples: {{triples}}
+    Answer:
+
+reverse_retrieval_decider:
+  system_prompt: |-
+    # Task Definition
+    You are a PoG reverse-retrieval decider.
+    Given current retrieved entities, historical candidate entities, memory, and known triplets, decide whether additional entities should be added for next-round retrieval.
+
+    # Instruction
+    1. If current retrieval set misses necessary entities for answering constraints, output need_reverse=true.
+    2. reverse_entity_names must be selected only from Candidate Entities.
+    3. If no additional entities are needed, output empty list.
+    4. Keep reason concise and evidence-grounded.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "need_reverse": false,
+      "reverse_entity_names": [],
+      "reason": "brief rationale"
+    }
+
+    # For Examples
+    Q: Which of the countries in the Caribbean has the smallest country calling code?
+    Relation: location.location.contains
+    Head Entities: [Caribbean]
+    Tail Entities: [Anguilla, Saint Lucia]
+    Answer:
+    {
+      "need_reverse": true,
+      "reverse_entity_names": ["Caribbean"],
+      "reason": "The entities set ignores other countries in Caribbean."
+    }
+
+    Q: The artist nominated for The Long Winter lived where?
+    Relation: book.written_work.author
+    Head Entities: [The Long Winter]
+    Tail Entities: [Laura Ingalls Wilder]
+    Answer:
+    {
+      "need_reverse": false,
+      "reverse_entity_names": [],
+      "reason": "Now you need to search where Laura Ingalls Wilder lived."
+    }
+  user_prompt: |-
+    Q: {{question}}
+    Relation: {{relation}}
+    Head Entities: {{head_entities}}
+    Tail Entities: {{tail_entities}}
+    Current Retrieved Entities: {{current_entities}}
+    Candidate Entities: {{candidate_entities}}
+    Memory: {{memory}}
+    Knowledge Triplets: {{knowledge_triplets}}
+    Answer:
+
+reverse_entity_selector:
+  system_prompt: |-
+    # Task Definition
+    Select the minimum necessary entities to add for next-round retrieval.
+
+    # Instruction
+    1. Use the given reason and memory to choose only necessary entities.
+    2. Select entities only from Candidate Entities.
+    3. Return a compact list with no extra text.
+
+    # Output Format
+    Return exactly one JSON array of entity names, e.g. ["entity_1", "entity_2"].
+  user_prompt: |-
+    Q: {{question}}
+    Reason: {{reason}}
+    Candidate Entities: {{candidate_entities}}
+    Memory: {{memory}}
+    Answer:
+
+generate_directly:
+  system_prompt: |-
+    # Task Definition
+    Answer the question based on your knowledge.
+
+    # Instruction
+    1. Provide a brief reasoning for your answer.
+    2. Keep the rationale concise and question-focused.
+    3. Return one or more answers as strings in a JSON list.
+    4. If uncertain or no answer is available, return an empty list.
+
+    # Output Format (strict JSON only)
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rationale": "brief reasoning",
+      "answer": ["answer_1", "answer_2"]
+    }
+    - `answer` must be a JSON string list.
+    - If no answer, return `"answer": []`.
+
+    # For Examples
+    Q: how old is sacha baron cohen?
+    Answer:
+    {
+      "rationale": "Sacha Baron Cohen was born in 1971; using the current year in this example gives age 54.",
+      "answer": ["54"]
+    }
+
+    Q: what character did natalie portman play in star wars?
+    Answer:
+    {
+      "rationale": "Natalie Portman played Padme Amidala in Star Wars.",
+      "answer": ["Padme Amidala"]
+    }
+
+    Q: which countries border the us?
+    Answer:
+    {
+      "rationale": "The countries bordering the United States are Canada and Mexico.",
+      "answer": ["Canada", "Mexico"]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Answer:

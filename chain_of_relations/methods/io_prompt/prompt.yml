@@ -1,0 +1,40 @@
+generate_directly:
+  system_prompt: |-
+    # Task Definition
+    Answer the question based on your knowledge.
+
+    # Instruction
+    1. Return one or more answers as strings in a JSON list.
+    2. Keep the answer concise and question-focused.
+    3. If uncertain or no answer is available, return an empty list.
+
+    # Output Format (strict JSON only)
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "answer": ["answer_1", "answer_2"]
+    }
+    - `answer` must be a JSON string list.
+    - If no answer, return `"answer": []`.
+
+    # For Examples
+    Q: how old is sacha baron cohen?
+    Answer:
+    {
+      "answer": ["54"]
+    }
+
+    Q: what character did natalie portman play in star wars?
+    Answer:
+    {
+      "answer": ["Padmé Amidala"]
+    }
+
+    Q: which countries border the us?
+    Answer:
+    {
+      "answer": ["Canada", "Mexico"]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Answer:

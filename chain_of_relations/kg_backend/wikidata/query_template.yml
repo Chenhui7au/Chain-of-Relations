@@ -1,0 +1,59 @@
+sparql_relations: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  SELECT DISTINCT ?relation
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_entities: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  SELECT DISTINCT ?targetEntity
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_constraints: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  SELECT DISTINCT ?constraintTarget
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_constraint_pairs: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  SELECT DISTINCT ?targetEntity ?constraintTarget
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_id2name: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  SELECT DISTINCT ?targetEntity
+  WHERE {
+    BIND(wd:{{entity_id}} AS ?entity)
+    ?entity rdfs:label ?targetEntity .
+  } LIMIT 50
+
+sparql_ids2names: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  SELECT DISTINCT ?entity ?targetEntity
+  WHERE {
+    VALUES ?entity { {{entity_values}} }
+    ?entity rdfs:label ?targetEntity .
+  }
+
+sparql_relation_labels: |
+  PREFIX wd: <http://www.wikidata.org/entity/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  SELECT DISTINCT ?relationId ?relationLabel
+  WHERE {
+    VALUES ?relation { {{relation_values}} }
+    BIND(STRAFTER(STR(?relation), "http://www.wikidata.org/entity/") AS ?relationId)
+    ?relation rdfs:label ?relationLabel .
+  }

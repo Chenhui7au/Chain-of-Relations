@@ -1,0 +1,1 @@
+"""CoT baseline method."""

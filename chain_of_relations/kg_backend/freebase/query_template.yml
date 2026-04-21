@@ -1,0 +1,42 @@
+sparql_relations: |
+  PREFIX ns: <http://rdf.freebase.com/ns/>
+  SELECT DISTINCT ?relation
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_entities: |
+  PREFIX ns: <http://rdf.freebase.com/ns/>
+  SELECT DISTINCT ?targetEntity
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_constraints: |
+  PREFIX ns: <http://rdf.freebase.com/ns/>
+  SELECT DISTINCT ?constraintTarget
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_constraint_pairs: |
+  PREFIX ns: <http://rdf.freebase.com/ns/>
+  SELECT DISTINCT ?targetEntity ?constraintTarget
+  WHERE {
+    {{query}}
+  } LIMIT 1000
+
+sparql_id2name: |
+  PREFIX ns: <http://rdf.freebase.com/ns/>
+  SELECT DISTINCT ?targetEntity
+  WHERE {
+    {
+      ?entity ns:type.object.name ?targetEntity .
+      FILTER(?entity = ns:%s)
+    }
+    UNION
+    {
+      ?entity <http://www.w3.org/2002/07/owl#sameAs> ?targetEntity .
+      FILTER(?entity = ns:{{entity_id}})
+    }
+  } LIMIT 1

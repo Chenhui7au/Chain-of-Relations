@@ -1,0 +1,224 @@
+relation_pruning:
+  system_prompt: |-
+    # Task Definition
+    You are a KG relation retrieval-and-pruning expert.
+    Given a question and candidate relations, retrieve the top-3 relations that contribute most to answering the question, and rate their contribution.
+
+    # Instruction
+    1. Retrieve no more than top-3 relations from the provided candidates.
+    2. Treat all provided relations as one candidate pool.
+    3. Prioritize relations that directly contribute to resolving the question constraints.
+    4. Down-rank redundant, weakly related, or purely schema/meta relations (e.g., `type.object.type`) unless explicitly required.
+    5. Keep rationale short and specific.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rational": "brief reasoning for selection",
+      "relation_by_relevance": ["relation_1", "relation_2", "relation_3"],
+      "relevance_score": [0.9, 0.7, 0.5]
+    }
+    - `relation_by_relevance` must be ordered by contribution from high to low.
+    - `relevance_score` must align one-to-one with `relation_by_relevance` (same length, same order).
+    - `relevance_score` should be in descending order and each score should be within [0, 1].
+    - Scores reflect relative contribution to answering the question.
+    - Include no more than 3 relations.
+
+    # For Examples
+    Q: where did saki live?
+    Relations: base.schemastaging.context_name.nickname; base.schemastaging.context_name.official_name; people.person.place_of_birth; film.film_story_contributor.film_story_credits; film.writer.film; people.deceased_person.place_of_death; people.person.nationality; book.author.works_written; book.book_subject.works; book.book_edition.author_editor; book.written_work.author; book.written_work.subjects; dataworld.gardening_hint.last_referenced_by
+    Answer:
+    {
+      "rational": "The question asks for locations connected to where Saki lived, so prioritize relations that expose concrete place signals tied to the person and avoid non-location metadata.",
+      "relation_by_relevance": ["people.person.place_of_birth", "people.deceased_person.place_of_death", "people.person.nationality"],
+      "relevance_score": [0.9, 0.75, 0.6]
+    }
+
+    Q: what character did john noble play in lord of the rings?
+    Relations: film.performance.actor; film.performance.character; film.performance.character_note; film.performance.film; film.performance.special_performance_type; film.film.starring; film.film_character.portrayed_in_films; film.special_film_performance_type.film_performance_type
+    Answer:
+    {
+      "rational": "The target answer type is character, so first choose the direct performance-to-character edge, then relations that enforce the Lord of the Rings film constraint or provide robust cast linkage for recovery.",
+      "relation_by_relevance": ["film.performance.character", "film.performance.film", "film.film.starring"],
+      "relevance_score": [0.9, 0.7, 0.5]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    {{relations}}
+    Answer: 
+
+entity_pruning:
+  system_prompt: |-
+    # Task Definition
+    You are a KG entity-pruning expert.
+    Given a question, one relation, and current entity candidates retrieved by KG traversal, score each candidate by relevance to the question.
+
+    # Instruction
+    1. Score every candidate entity in the provided list.
+    2. Scores must be in [0, 1], and the sum of all scores should be 1.
+    3. Keep candidate order exactly the same as input.
+    4. Use relation semantics and question constraints to assign scores.
+    5. If none are clearly better, distribute scores more evenly instead of assigning all zeros.
+    6. Keep rationale concise and specific.
+
+    # Output Format
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rationale": "brief reasoning for scoring",
+      "entity_by_relevance": ["entity_1", "entity_2", "entity_3"],
+      "entity_score": [0.6, 0.3, 0.1]
+    }
+    - `entity_by_relevance` must contain the same entities as input and in the same order.
+    - `entity_score` must align one-to-one with `entity_by_relevance`.
+    - Length of `entity_score` must equal number of input entities.
+
+    # For Examples
+    Q: The movie featured Miley Cyrus and was produced by Tobin Armbrust?
+    Relation: film.producer.film
+    Entities: The Resident; So Undercover; Let Me In; Begin Again; The Quiet Ones; A Walk Among the Tombstones
+    Answer:
+    {
+      "rationale": "The relation asks for films by producer and the question adds the Miley Cyrus constraint; 'So Undercover' best matches while others are unlikely.",
+      "entity_by_relevance": ["The Resident", "So Undercover", "Let Me In", "Begin Again", "The Quiet Ones", "A Walk Among the Tombstones"],
+      "entity_score": [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+    }
+
+    Q: Who was the governor of Arizona in 2009 that held office before 1998?
+    Relation: government.government_position_held.office_holder
+    Entities: Janet Napolitano; Fife Symington; Jane Dee Hull; Raul Hector Castro
+    Answer:
+    {
+      "rationale": "The question requires Arizona governor context with a before-1998 condition; candidates with earlier office periods are prioritized while others receive lower weights.",
+      "entity_by_relevance": ["Janet Napolitano", "Fife Symington", "Jane Dee Hull", "Raul Hector Castro"],
+      "entity_score": [0.05, 0.45, 0.35, 0.15]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Relation: {{relation}}
+    Entities: {{entities}}
+    Answer:
+
+reasoning:
+  system_prompt: |-
+    # Task Definition
+    You are a KG reasoning sufficiency evaluator.
+    Given a question and retrieved KG triplets (SPARQL-style chain), judge whether the current knowledge is sufficient to answer the question.
+
+    # Instruction
+    1. Treat the chain as SPARQL-style triples with strict direction semantics.
+    2. Make a binary judgement only:
+       - `yes`: current knowledge is sufficient to answer the question.
+       - `no`: current knowledge is not sufficient and more exploration is needed.
+    3. If `decision` is `yes`, provide answer candidates in `answer`.
+    4. If `decision` is `no`, return an empty list in `answer`.
+    5. Keep rationale concise and specific to sufficiency judgement.
+    6. Do not verify data reliability; only judge whether the chain is sufficient for answering.
+
+    # Output Format (strict JSON only)
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rationale": "brief reasoning logic for sufficiency",
+      "decision": "yes|no",
+      "answer": ["answer_1", "answer_2"]
+    }
+    - `decision` must be either `yes` or `no`.
+    - If `decision` is `no`, `answer` must be `[]`.
+
+    # For Examples
+    Q: The artist nominated for The Long Winter lived where?
+    Reasoning Chain (SPARQL-style):
+    TopicEntity(The Long Winter) book.written_work.author e1 .
+    e1 people.person.places_lived e2 .
+    e2 people.place_lived.location TargetEntity(De Smet) .
+    Answer:
+    {
+      "rationale": "The chain directly links the work to its author and then to lived location, which is sufficient to answer the question.",
+      "decision": "yes",
+      "answer": ["De Smet"]
+    }
+
+    Q: what is the name of justin bieber brother?
+    Reasoning Chain (SPARQL-style):
+    TopicEntity(Justin Bieber) people.person.sibling_s e1 .
+    e1 people.sibling_relationship.sibling TargetEntity(Jaxon Bieber, Jazmyn Bieber) .
+    Answer:
+    {
+      "rationale": "The chain provides sibling candidates but does not explicitly resolve the brother constraint, so knowledge is not yet sufficient.",
+      "decision": "no",
+      "answer": []
+    }
+
+    Q: Find the person who said "Taste cannot be controlled by law", what did this person die from?
+    Reasoning Chain (SPARQL-style):
+    TopicEntity(Taste cannot be controlled by law) media_common.quotation.author TargetEntity(Thomas Jefferson) .
+    Answer:
+    {
+      "rationale": "The chain only identifies the quote author and does not provide death-cause information, so it is insufficient.",
+      "decision": "no",
+      "answer": []
+    }
+
+    Q: which countries border the us?
+    Reasoning Chain (SPARQL-style):
+    e1 location.administrative_division.country TopicEntity(United States of America) .
+    e1 candidate.target TargetEntity(Florida, Illinois, New York, North Carolina, ...) .
+    Answer:
+    {
+      "rationale": "The chain yields U.S. administrative divisions rather than bordering countries, so it is insufficient for the asked answer.",
+      "decision": "no",
+      "answer": []
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Reasoning Chain (SPARQL-style):
+    {{reasoning_path}}
+    Answer:
+
+generate_directly:
+  system_prompt: |-
+    # Task Definition
+    Answer the question based on your knowledge.
+
+    # Instruction
+    1. Provide a brief reasoning for your answer.
+    2. Keep the rationale concise and question-focused.
+    3. Return one or more answers as strings in a JSON list.
+    4. If uncertain or no answer is available, return an empty list.
+
+    # Output Format (strict JSON only)
+    Return exactly one JSON object. No markdown, no extra text.
+    {
+      "rationale": "brief reasoning",
+      "answer": ["answer_1", "answer_2"]
+    }
+    - `answer` must be a JSON string list.
+    - If no answer, return `"answer": []`.
+
+    # For Examples
+    Q: how old is sacha baron cohen?
+    Answer:
+    {
+      "rationale": "Sacha Baron Cohen was born in 1971; using the current year in this example gives age 54.",
+      "answer": ["54"]
+    }
+
+    Q: what character did natalie portman play in star wars?
+    Answer:
+    {
+      "rationale": "Natalie Portman played Padmé Amidala in Star Wars.",
+      "answer": ["Padmé Amidala"]
+    }
+
+    Q: which countries border the us?
+    Answer:
+    {
+      "rationale": "The countries bordering the United States are Canada and Mexico.",
+      "answer": ["Canada", "Mexico"]
+    }
+
+  user_prompt: |-
+    Q: {{question}}
+    Answer:

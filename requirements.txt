@@ -1,0 +1,8 @@
+# Third-party dependencies directly used by this repository
+
+openai==2.29.0
+PyYAML==6.0.3
+tqdm==4.67.3
+SPARQLWrapper==2.0.0
+sentence-transformers==2.7.0
+matplotlib==3.9.2
